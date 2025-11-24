@@ -48,7 +48,11 @@ Thumbs.db
 # --- User Specific Exclusions ---
 # Documentation
 Guide/
+!Guide/SETUP_DATABASE_NEON.md
+!Guide/DEPLOY_LOCALHOST.md
+!Guide/PANDUAN_N8N_INDONESIA.md
 *.md
+!README.md
 
 # Scripts & Utilities
 *.bat
