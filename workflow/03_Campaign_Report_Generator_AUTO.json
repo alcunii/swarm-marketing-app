@@ -1,0 +1,246 @@
+{
+  "name": "03 - Campaign Report Generator (AUTO)",
+  "nodes": [
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "minutes",
+              "minutesInterval": 5
+            }
+          ]
+        }
+      },
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [240, 300],
+      "id": "schedule-trigger",
+      "name": "Every 5 Minutes"
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "SELECT batch_id FROM analysis_batches WHERE status = 'content_ready' ORDER BY created_at ASC LIMIT 1;",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.6,
+      "position": [460, 300],
+      "id": "find-ready",
+      "name": "Find Content Ready",
+      "credentials": {
+        "postgres": {
+          "id": "ZWkJzn30zvcID8Bs",
+          "name": "Postgres account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "leftValue": "",
+            "caseSensitive": true,
+            "typeValidation": "strict"
+          },
+          "conditions": [
+            {
+              "id": "has-batch",
+              "leftValue": "={{ $json.batch_id }}",
+              "rightValue": "",
+              "operator": {
+                "type": "string",
+                "operation": "exists"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [680, 300],
+      "id": "has-campaign",
+      "name": "Has Campaign?"
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "=SELECT \n  pk.platform,\n  COUNT(*) as total_posts,\n  SUM(pk.reach_simulated) as total_reach,\n  SUM(pk.engagement_simulated) as total_engagement,\n  AVG(pk.reach_simulated) as avg_reach,\n  AVG(pk.engagement_simulated) as avg_engagement\nFROM proposed_kpis pk\nWHERE pk.batch_id = '{{ $json.batch_id }}'\nGROUP BY pk.platform;",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.6,
+      "position": [920, 300],
+      "id": "get-metrics",
+      "name": "Get Metrics by Platform",
+      "credentials": {
+        "postgres": {
+          "id": "ZWkJzn30zvcID8Bs",
+          "name": "Postgres account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "=SELECT campaign_name, brand_name, target_audience FROM analysis_batches WHERE batch_id = '{{ $json.batch_id }}' LIMIT 1;",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.6,
+      "position": [920, 180],
+      "id": "get-campaign",
+      "name": "Get Campaign Info",
+      "credentials": {
+        "postgres": {
+          "id": "ZWkJzn30zvcID8Bs",
+          "name": "Postgres account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "mode": "combine",
+        "combineBy": "combineAll",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.merge",
+      "typeVersion": 3.2,
+      "position": [1140, 240],
+      "id": "merge-data",
+      "name": "Merge Data"
+    },
+    {
+      "parameters": {
+        "jsCode": "const campaignInfo = $('Get Campaign Info').first().json;\nconst metrics = $('Get Metrics by Platform').all();\nconst batchId = $('Find Content Ready').first().json.batch_id;\n\nconst totalReach = metrics.reduce((sum, m) => sum + parseInt(m.json.total_reach || 0), 0);\nconst totalEngagement = metrics.reduce((sum, m) => sum + parseInt(m.json.total_engagement || 0), 0);\nconst totalPosts = metrics.reduce((sum, m) => sum + parseInt(m.json.total_posts || 0), 0);\n\nconst platformBreakdown = metrics.map(m => ({\n  platform: m.json.platform,\n  posts: parseInt(m.json.total_posts),\n  reach: parseInt(m.json.total_reach),\n  engagement: parseInt(m.json.total_engagement),\n  avg_reach: parseFloat(m.json.avg_reach).toFixed(0),\n  avg_engagement: parseFloat(m.json.avg_engagement).toFixed(0)\n}));\n\nconst executiveSummary = `Campaign \"${campaignInfo.campaign_name}\" for ${campaignInfo.brand_name} targeting ${campaignInfo.target_audience} has generated ${totalPosts} social media posts across ${metrics.length} platforms with projected reach of ${totalReach.toLocaleString()} and ${totalEngagement.toLocaleString()} engagements.`;\n\nconst reportData = {\n  batch_id: batchId,\n  campaign_name: campaignInfo.campaign_name,\n  brand_name: campaignInfo.brand_name,\n  target_audience: campaignInfo.target_audience,\n  executive_summary: executiveSummary,\n  total_posts: totalPosts,\n  total_reach: totalReach,\n  total_engagement: totalEngagement,\n  total_platforms: metrics.length,\n  platform_breakdown: JSON.stringify(platformBreakdown),\n  generated_at: new Date().toISOString()\n};\n\nreturn { json: reportData };"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1360, 240],
+      "id": "generate-report",
+      "name": "Generate Report Summary"
+    },
+    {
+      "parameters": {
+        "schema": {
+          "__rl": true,
+          "value": "public",
+          "mode": "list"
+        },
+        "table": {
+          "__rl": true,
+          "value": "campaign_reports",
+          "mode": "list"
+        },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "batch_id": "={{ $json.batch_id }}",
+            "campaign_name": "={{ $json.campaign_name }}",
+            "brand_name": "={{ $json.brand_name }}",
+            "target_audience": "={{ $json.target_audience }}",
+            "executive_summary": "={{ $json.executive_summary }}",
+            "total_posts": "={{ $json.total_posts }}",
+            "total_reach": "={{ $json.total_reach }}",
+            "total_engagement": "={{ $json.total_engagement }}",
+            "total_platforms": "={{ $json.total_platforms }}",
+            "platform_breakdown": "={{ $json.platform_breakdown }}",
+            "generated_at": "={{ $json.generated_at }}"
+          }
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.6,
+      "position": [1580, 240],
+      "id": "save-report",
+      "name": "Save Report to DB",
+      "credentials": {
+        "postgres": {
+          "id": "ZWkJzn30zvcID8Bs",
+          "name": "Postgres account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "update",
+        "schema": {
+          "__rl": true,
+          "value": "public",
+          "mode": "list"
+        },
+        "table": {
+          "__rl": true,
+          "value": "analysis_batches",
+          "mode": "list"
+        },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "batch_id": "={{ $('Find Content Ready').first().json.batch_id }}",
+            "status": "completed"
+          },
+          "matchingColumns": [
+            "batch_id"
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.6,
+      "position": [1800, 240],
+      "id": "update-status",
+      "name": "Update to Completed",
+      "credentials": {
+        "postgres": {
+          "id": "ZWkJzn30zvcID8Bs",
+          "name": "Postgres account"
+        }
+      }
+    }
+  ],
+  "connections": {
+    "Every 5 Minutes": {
+      "main": [[{"node": "Find Content Ready", "type": "main", "index": 0}]]
+    },
+    "Find Content Ready": {
+      "main": [[{"node": "Has Campaign?", "type": "main", "index": 0}]]
+    },
+    "Has Campaign?": {
+      "main": [
+        [
+          {"node": "Get Campaign Info", "type": "main", "index": 0},
+          {"node": "Get Metrics by Platform", "type": "main", "index": 0}
+        ]
+      ]
+    },
+    "Get Campaign Info": {
+      "main": [[{"node": "Merge Data", "type": "main", "index": 0}]]
+    },
+    "Get Metrics by Platform": {
+      "main": [[{"node": "Merge Data", "type": "main", "index": 1}]]
+    },
+    "Merge Data": {
+      "main": [[{"node": "Generate Report Summary", "type": "main", "index": 0}]]
+    },
+    "Generate Report Summary": {
+      "main": [[{"node": "Save Report to DB", "type": "main", "index": 0}]]
+    },
+    "Save Report to DB": {
+      "main": [[{"node": "Update to Completed", "type": "main", "index": 0}]]
+    }
+  },
+  "pinData": {},
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "staticData": null,
+  "tags": [],
+  "triggerCount": 0,
+  "updatedAt": "2025-11-09T03:30:00.000Z",
+  "versionId": "1"
+}

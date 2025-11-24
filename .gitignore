@@ -1,0 +1,70 @@
+# Dependencies
+node_modules/
+swarm-marketing-app/node_modules/
+
+# Next.js
+.next/
+out/
+build/
+.turbo/
+
+# Production
+dist/
+build/
+
+# Misc
+.DS_Store
+*.pem
+
+# Debug
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# Local env files
+.env
+.env.local
+.env.development.local
+.env.test.local
+.env.production.local
+
+# Vercel
+.vercel
+
+# TypeScript
+*.tsbuildinfo
+next-env.d.ts
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS
+Thumbs.db
+
+# --- User Specific Exclusions ---
+# Documentation
+Guide/
+*.md
+
+# Scripts & Utilities
+*.bat
+test-db.ts
+init-neon.ts
+check_db_schema.ts
+test_insert.ts
+fix_db.ts
+fix_roles_db.ts
+check_schema_live.ts
+apply_fix_schema.ts
+merge_workflows.ts
+
+# SQL Scripts (Manual fixes/migrations)
+*.sql
+
+# Ensure .env is definitely ignored (redundant but safe)
+.env
+.env.local

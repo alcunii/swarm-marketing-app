@@ -1,0 +1,1297 @@
+{
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "marketing-campaign-strategy",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2.1,
+      "position": [
+        -528,
+        80
+      ],
+      "id": "3026b747-e010-4070-af2b-30c0cb0c0d45",
+      "name": "Webhook - Campaign Input",
+      "webhookId": "campaign-strategy-webhook-001"
+    },
+    {
+      "parameters": {
+        "promptType": "define",
+        "text": "=You are a **Social Media Marketing Strategist** with expertise in multi-platform campaign planning.\n\nCAMPAIGN BRIEF:\nCampaign Name: {{ $json.body.campaign_name }}\nCampaign Goal: {{ $json.body.campaign_goal }}\nDuration: {{ $json.body.duration_days }} days\nTarget Audience: {{ $json.body.target_audience }}\nBrand: {{ $json.body.brand_name }}\n\nYOUR TASK:\nAnalyze this campaign and recommend a comprehensive platform strategy.\n\n1. **Platform Selection & Allocation**\n   - Which social media platforms are best for this audience?\n   - How to allocate effort across platforms (percentage)?\n   - Why each platform for this specific audience?\n\n2. **Content Strategy per Platform**\n   - What content types work best? (Reels, Stories, Posts, TikTok Videos, Tweets, LinkedIn Articles)\n   - How many posts per day per platform?\n   - Best posting times for maximum engagement\n\n3. **Overall Campaign Strategy**\n   - Brief strategic summary (2-3 sentences)\n   - Key success factors\n\nOUTPUT FORMAT (JSON only, no markdown, no code blocks):\n{\n  \"strategic_summary\": \"2-3 sentence strategy overview\",\n  \"proposed_breakdowns\": [\n    {\n      \"name\": \"Instagram Campaign\",\n      \"value\": 40,\n      \"unit\": \"%\",\n      \"description\": \"Focus on Reels and Stories. Post 3x daily at 10 AM, 2 PM, 6 PM.\",\n      \"platform\": \"Instagram\",\n      \"content_type\": \"Reels, Stories\",\n      \"posting_frequency\": 3\n    },\n    {\n      \"name\": \"TikTok Campaign\",\n      \"value\": 60,\n      \"unit\": \"%\",\n      \"description\": \"Short-form videos targeting trending sounds. Post 5x daily.\",\n      \"platform\": \"TikTok\",\n      \"content_type\": \"Short Videos\",\n      \"posting_frequency\": 5\n    }\n  ],\n  \"team_recommendation\": [\n    {\n      \"role_name\": \"Content Creator\",\n      \"responsibilities\": \"Create engaging video content for TikTok and Instagram Reels. Stay updated with trending audio and hashtags.\"\n    },\n    {\n      \"role_name\": \"Community Manager\",\n      \"responsibilities\": \"Respond to comments, engage with followers, monitor brand mentions.\"\n    }\n  ]\n}\n\nCRITICAL:\n- Output MUST be valid JSON without any markdown\n- Do NOT wrap in ```json code blocks\n- Start directly with { and end with }\n- Include platform, content_type, and posting_frequency for each breakdown",
+        "options": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.agent",
+      "typeVersion": 2.2,
+      "position": [
+        -304,
+        80
+      ],
+      "id": "70a35ee9-74c1-47b2-a9ff-260d148d14e7",
+      "name": "AI Campaign Strategist",
+      "continueOnFail": true
+    },
+    {
+      "parameters": {
+        "jsCode": "// Parse and validate AI response\nconst aiResponse = $input.first().json;\n\n// Extract text from various possible response formats\nlet rawOutput = aiResponse.output || \n                aiResponse.text || \n                aiResponse.response || \n                aiResponse.content ||\n                JSON.stringify(aiResponse);\n\n// Clean markdown code blocks\nrawOutput = rawOutput\n  .replace(/```json\\s*/g, '')\n  .replace(/```\\s*/g, '')\n  .trim();\n\n// Parse JSON\nlet parsed;\ntry {\n  parsed = JSON.parse(rawOutput);\n} catch (error) {\n  throw new Error(`Failed to parse AI output as JSON: ${error.message}\\n\\nRaw output:\\n${rawOutput.substring(0, 500)}`);\n}\n\n// Validate required fields\nif (!parsed.strategic_summary || typeof parsed.strategic_summary !== 'string') {\n  throw new Error('Missing or invalid field: strategic_summary (must be string)');\n}\n\nif (!Array.isArray(parsed.proposed_breakdowns) || parsed.proposed_breakdowns.length === 0) {\n  throw new Error('Missing or invalid field: proposed_breakdowns (must be non-empty array)');\n}\n\nif (!Array.isArray(parsed.team_recommendation) || parsed.team_recommendation.length === 0) {\n  throw new Error('Missing or invalid field: team_recommendation (must be non-empty array)');\n}\n\n// Return cleaned and validated output\nreturn {\n  output: {\n    strategic_summary: parsed.strategic_summary,\n    proposed_breakdowns: parsed.proposed_breakdowns,\n    team_recommendation: parsed.team_recommendation\n  },\n  batch_id: $('Webhook - Campaign Input').first().json.body.batch_id,\n  goal_id: $('Webhook - Campaign Input').first().json.body.goal_id\n};"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        48,
+        80
+      ],
+      "id": "ee67d807-6c64-4283-9168-3340ee148465",
+      "name": "Parse AI JSON"
+    },
+    {
+      "parameters": {
+        "fieldToSplitOut": "output.proposed_breakdowns",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.splitOut",
+      "typeVersion": 1,
+      "position": [
+        272,
+        -112
+      ],
+      "id": "8d1c21e5-e218-4662-8e50-f298c474dcd0",
+      "name": "Split Platform Strategies"
+    },
+    {
+      "parameters": {
+        "fieldToSplitOut": "output.team_recommendation",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.splitOut",
+      "typeVersion": 1,
+      "position": [
+        272,
+        80
+      ],
+      "id": "a30b9e57-0fbb-4b75-abd8-d35d533710b2",
+      "name": "Split Team Roles"
+    },
+    {
+      "parameters": {
+        "schema": {
+          "__rl": true,
+          "value": "public",
+          "mode": "list"
+        },
+        "table": {
+          "__rl": true,
+          "value": "proposed_breakdowns",
+          "mode": "list"
+        },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "name": "={{ $json.name }}",
+            "value": "={{ $json.value }}",
+            "unit": "={{ $json.unit }}",
+            "description": "={{ $json.description }}",
+            "batch_id": "={{ $('Webhook - Campaign Input').item.json.body.batch_id }}",
+            "platform": "={{ $json.platform }}",
+            "content_type": "={{ $json.content_type }}",
+            "posting_frequency": "={{ $json.posting_frequency }}",
+            "created_at": "={{ $now }}"
+          },
+          "matchingColumns": [],
+          "schema": [
+            {
+              "id": "breakdown_id",
+              "displayName": "breakdown_id",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "number",
+              "canBeUsedToMatch": true,
+              "removed": true
+            },
+            {
+              "id": "batch_id",
+              "displayName": "batch_id",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "name",
+              "displayName": "name",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "value",
+              "displayName": "value",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "number",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "unit",
+              "displayName": "unit",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "description",
+              "displayName": "description",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "platform",
+              "displayName": "platform",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "content_type",
+              "displayName": "content_type",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "posting_frequency",
+              "displayName": "posting_frequency",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "number",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "status",
+              "displayName": "status",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "created_at",
+              "displayName": "created_at",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "dateTime",
+              "canBeUsedToMatch": true
+            }
+          ],
+          "attemptToConvertTypes": false,
+          "convertFieldsToString": false
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.6,
+      "position": [
+        720,
+        -112
+      ],
+      "id": "ce775f8e-3394-4e92-8c00-44ce6a920e46",
+      "name": "Save Platform Strategies",
+      "credentials": {
+        "postgres": {
+          "id": "MveB6PxYqvW6HcTU",
+          "name": "neon tech"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "schema": {
+          "__rl": true,
+          "value": "public",
+          "mode": "list"
+        },
+        "table": {
+          "__rl": true,
+          "value": "ai_recommended_roles",
+          "mode": "list"
+        },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "batch_id": "={{ $('Webhook - Campaign Input').item.json.body.batch_id }}",
+            "role_name": "={{ $json.role_name }}",
+            "responsibilities": "={{ $json.responsibilities }}",
+            "created_at": "={{ $now }}"
+          },
+          "matchingColumns": [],
+          "schema": [
+            {
+              "id": "role_recommendation_id",
+              "displayName": "role_recommendation_id",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "number",
+              "canBeUsedToMatch": true,
+              "removed": true
+            },
+            {
+              "id": "batch_id",
+              "displayName": "batch_id",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "role_name",
+              "displayName": "role_name",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "responsibilities",
+              "displayName": "responsibilities",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "created_at",
+              "displayName": "created_at",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "dateTime",
+              "canBeUsedToMatch": true
+            }
+          ],
+          "attemptToConvertTypes": false,
+          "convertFieldsToString": false
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.6,
+      "position": [
+        720,
+        80
+      ],
+      "id": "092552d5-9df1-47ce-85f4-20e72a1c11f0",
+      "name": "Save Team Roles",
+      "credentials": {
+        "postgres": {
+          "id": "MveB6PxYqvW6HcTU",
+          "name": "neon tech"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "fieldToSplitOut": "output.strategic_summary",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.splitOut",
+      "typeVersion": 1,
+      "position": [
+        272,
+        272
+      ],
+      "id": "b577a880-3147-4f89-acd3-64ef5beaab5f",
+      "name": "Extract Summary"
+    },
+    {
+      "parameters": {},
+      "type": "n8n-nodes-base.wait",
+      "typeVersion": 1.1,
+      "position": [
+        496,
+        272
+      ],
+      "id": "b4276b77-aa6a-4002-aadc-23fc85d1e880",
+      "name": "Wait Before Update",
+      "webhookId": "48ba02cd-a1c8-400d-82ef-84bef032fea2"
+    },
+    {
+      "parameters": {
+        "operation": "update",
+        "schema": {
+          "__rl": true,
+          "value": "public",
+          "mode": "list"
+        },
+        "table": {
+          "__rl": true,
+          "value": "analysis_batches",
+          "mode": "list"
+        },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "batch_id": "={{ $('Webhook - Campaign Input').item.json.body.batch_id }}",
+            "status": "strategy_pending",
+            "summary": "={{ $json['output.strategic_summary'] }}",
+            "created_at": "={{ $now }}",
+            "duration_days": 0
+          },
+          "matchingColumns": [
+            "batch_id"
+          ],
+          "schema": [
+            {
+              "id": "batch_id",
+              "displayName": "batch_id",
+              "required": true,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "goal_id",
+              "displayName": "goal_id",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "campaign_name",
+              "displayName": "campaign_name",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "campaign_goal",
+              "displayName": "campaign_goal",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "duration_days",
+              "displayName": "duration_days",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "number",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "target_audience",
+              "displayName": "target_audience",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "brand_name",
+              "displayName": "brand_name",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "status",
+              "displayName": "status",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "summary",
+              "displayName": "summary",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "circlo_profile_id",
+              "displayName": "circlo_profile_id",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": true
+            },
+            {
+              "id": "circlo_niche",
+              "displayName": "circlo_niche",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": true
+            },
+            {
+              "id": "created_at",
+              "displayName": "created_at",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "dateTime",
+              "canBeUsedToMatch": true
+            }
+          ],
+          "attemptToConvertTypes": false,
+          "convertFieldsToString": false
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.6,
+      "position": [
+        720,
+        272
+      ],
+      "id": "1591725d-a189-43a7-88ba-c6748d1ab9a7",
+      "name": "Update Campaign Status",
+      "credentials": {
+        "postgres": {
+          "id": "MveB6PxYqvW6HcTU",
+          "name": "neon tech"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "modelName": "models/gemini-2.5-flash-lite",
+        "options": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.lmChatGoogleGemini",
+      "typeVersion": 1,
+      "position": [
+        -304,
+        320
+      ],
+      "id": "addc54c0-538f-48d5-a3fa-14ca8aba6f56",
+      "name": "Google Gemini Model",
+      "credentials": {
+        "googlePalmApi": {
+          "id": "mQYm94v2g94q3yvS",
+          "name": "Google Gemini(PaLM) Api account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "options": {}
+      },
+      "type": "n8n-nodes-base.splitInBatches",
+      "typeVersion": 3,
+      "position": [
+        496,
+        -112
+      ],
+      "id": "3c32be0a-edde-4f59-ae3a-6b2631d33f0c",
+      "name": "Loop Platforms"
+    },
+    {
+      "parameters": {
+        "options": {}
+      },
+      "type": "n8n-nodes-base.splitInBatches",
+      "typeVersion": 3,
+      "position": [
+        496,
+        80
+      ],
+      "id": "b441432a-c28f-4f98-bf4d-070fb5986538",
+      "name": "Loop Roles"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "leftValue": "",
+            "caseSensitive": true,
+            "typeValidation": "strict"
+          },
+          "conditions": [
+            {
+              "id": "has-batch",
+              "leftValue": "={{ $json.batch_id }}",
+              "rightValue": "",
+              "operator": {
+                "type": "string",
+                "operation": "exists"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        1224,
+        288
+      ],
+      "id": "d686cc2e-2264-405a-b791-6eb4e009ebdf",
+      "name": "Has Campaign?"
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "=SELECT * FROM proposed_breakdowns WHERE batch_id = '{{ $json.batch_id }}' ORDER BY value DESC;",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.6,
+      "position": [
+        1448,
+        192
+      ],
+      "id": "f44354b8-fb5b-477c-9e46-a60f60b3b5a6",
+      "name": "Get Strategies",
+      "credentials": {
+        "postgres": {
+          "id": "MveB6PxYqvW6HcTU",
+          "name": "neon tech"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "=SELECT campaign_name, brand_name, target_audience FROM analysis_batches WHERE batch_id = '{{ $json.batch_id }}' LIMIT 1;",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.6,
+      "position": [
+        1448,
+        384
+      ],
+      "id": "655c472c-9736-42cd-afe3-a85444bf7b3c",
+      "name": "Get Campaign Info",
+      "credentials": {
+        "postgres": {
+          "id": "MveB6PxYqvW6HcTU",
+          "name": "neon tech"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "mode": "combine",
+        "combineBy": "combineAll",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.merge",
+      "typeVersion": 3.2,
+      "position": [
+        1672,
+        288
+      ],
+      "id": "12653120-bcf6-4c93-bfc4-e31e6a516ea1",
+      "name": "Merge Data"
+    },
+    {
+      "parameters": {
+        "options": {}
+      },
+      "type": "n8n-nodes-base.splitInBatches",
+      "typeVersion": 3,
+      "position": [
+        1896,
+        288
+      ],
+      "id": "ee7c4271-1652-4450-9eea-6913b5492cc5",
+      "name": "Loop Platforms"
+    },
+    {
+      "parameters": {
+        "promptType": "define",
+        "text": "=You are **Agent 1: Content Creator** for {{ $('Webhook - Campaign Input').first().json.body.brand_name }}.\n\nCAMPAIGN: {{ $('Webhook - Campaign Input').first().json.body.campaign_name }}\nTARGET: {{ $('Webhook - Campaign Input').first().json.body.target_audience }}\nPLATFORM: {{ $json.platform }}\nCONTENT TYPE: {{ $json.content_type }}\nPOSTING FREQUENCY: {{ $json.value }} posts\n\nYOUR TASK:\nCreate {{ $json.value }} unique, engaging social media posts for this platform.\n\nFor each post:\n1. Write a compelling caption (2-4 sentences)\n2. Add relevant hashtags (5-8)\n3. Include a clear call-to-action\n4. Suggest appropriate emojis (2-4)\n5. Describe the content idea\n\nOUTPUT (JSON only, no markdown):\n{\n  \"posts\": [\n    {\n      \"caption\": \"Your caption here\",\n      \"hashtags\": \"#Tag1 #Tag2 #Tag3\",\n      \"call_to_action\": \"Your CTA\",\n      \"emojis\": \"🎉✨\",\n      \"content_description\": \"Image/video description\"\n    }\n  ]\n}\n\nIMPORTANT:\n- Return ONLY valid JSON\n- NO markdown, NO code blocks\n- Start with { and end with }",
+        "options": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.agent",
+      "typeVersion": 2.2,
+      "position": [
+        2120,
+        -112
+      ],
+      "id": "f536a2e4-269b-4b57-b415-dd7f7a2678d0",
+      "name": "Agent 1: Content Creator"
+    },
+    {
+      "parameters": {
+        "promptType": "define",
+        "text": "=You are **Agent 2: Copywriter** specializing in tone refinement.\n\nREFINE these posts for {{ $json.platform }}:\n{{ $('Agent 1: Content Creator').item.json.output }}\n\nAUDIENCE: {{ $('Webhook - Campaign Input').first().json.body.target_audience }}\n\nYOUR TASK:\n1. Keep the structure but improve:\n   - Make tone warm, friendly, and approachable\n   - Add personality and human touch\n   - Ensure language fits the target demographic\n   - Vary sentence structure for natural flow\n2. Return in the SAME JSON format\n\nOUTPUT (JSON only):\n{\n  \"posts\": [ ... refined posts ... ]\n}\n\nNO markdown, NO code blocks.",
+        "options": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.agent",
+      "typeVersion": 2.2,
+      "position": [
+        2472,
+        -112
+      ],
+      "id": "83860f4d-9586-4f97-9e02-83f33fa4f14e",
+      "name": "Agent 2: Copywriter"
+    },
+    {
+      "parameters": {
+        "jsCode": "// Clean output from AI (remove markdown code blocks if present)\nlet outputText = $json.output || '{}';\n\n// Remove markdown code blocks\noutputText = outputText.replace(/```json\\s*/g, '').replace(/```\\s*/g, '');\n\n// Parse JSON\nconst parsed = JSON.parse(outputText);\nconst posts = parsed.posts || [];\n\n// Use Webhook data for batch_id to avoid reference errors\nconst batchId = $('Webhook - Campaign Input').first().json.body.batch_id;\nconst platform = $('Loop Platforms').item.json.platform;\n\n// Set time to now for immediate display\nconst scheduledTime = new Date().toISOString();\n\nreturn posts.map((post, idx) => {\n  return {\n    json: {\n      ...post,\n      batch_id: batchId,\n      platform: platform,\n      scheduled_time: scheduledTime,\n      status: 'pending_approval',\n      reach_simulated: Math.floor(Math.random() * 5000) + 10000,\n      engagement_simulated: Math.floor(Math.random() * 500) + 800\n    }\n  };\n});"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        2824,
+        -16
+      ],
+      "id": "9fdb0695-a597-405f-b1a1-68637861ace3",
+      "name": "Format Posts"
+    },
+    {
+      "parameters": {
+        "schema": {
+          "__rl": true,
+          "value": "public",
+          "mode": "list"
+        },
+        "table": {
+          "__rl": true,
+          "value": "proposed_kpis",
+          "mode": "list"
+        },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "batch_id": "={{ $json.batch_id }}",
+            "platform": "={{ $json.platform }}",
+            "post_caption": "={{ $json.caption }}",
+            "hashtags": "={{ $json.hashtags }}",
+            "call_to_action": "={{ $json.call_to_action }}",
+            "emojis": "={{ $json.emojis }}",
+            "content_description": "={{ $json.content_description }}",
+            "scheduled_time": "={{ $json.scheduled_time }}",
+            "status": "={{ $json.status }}",
+            "reach_simulated": "={{ $json.reach_simulated }}",
+            "engagement_simulated": "={{ $json.engagement_simulated }}",
+            "is_approved": false,
+            "created_at": "={{ $now }}"
+          }
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.6,
+      "position": [
+        3048,
+        -16
+      ],
+      "id": "57b49130-b5ef-46a9-8183-b2c21b760cdc",
+      "name": "Save Posts to DB",
+      "credentials": {
+        "postgres": {
+          "id": "MveB6PxYqvW6HcTU",
+          "name": "neon tech"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "update",
+        "schema": {
+          "__rl": true,
+          "value": "public",
+          "mode": "list"
+        },
+        "table": {
+          "__rl": true,
+          "value": "analysis_batches",
+          "mode": "list"
+        },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "batch_id": "={{ $('Webhook - Campaign Input').first().json.body.batch_id }}",
+            "status": "content_ready"
+          },
+          "matchingColumns": [
+            "batch_id"
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.6,
+      "position": [
+        2184,
+        288
+      ],
+      "id": "f04c2e1b-a052-4aeb-acea-3b5b99e47b57",
+      "name": "Update to Content Ready",
+      "credentials": {
+        "postgres": {
+          "id": "MveB6PxYqvW6HcTU",
+          "name": "neon tech"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "=SELECT \n  pk.platform,\n  COUNT(*) as total_posts,\n  SUM(pk.reach_simulated) as total_reach,\n  SUM(pk.engagement_simulated) as total_engagement,\n  AVG(pk.reach_simulated) as avg_reach,\n  AVG(pk.engagement_simulated) as avg_engagement\nFROM proposed_kpis pk\nWHERE pk.batch_id = '{{ $('Webhook - Campaign Input').first().json.body.batch_id }}'\nGROUP BY pk.platform;",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.6,
+      "position": [
+        2184,
+        480
+      ],
+      "id": "338877fb-30f9-4f88-bc50-90be44bc7f5b",
+      "name": "Get Metrics for Report",
+      "credentials": {
+        "postgres": {
+          "id": "MveB6PxYqvW6HcTU",
+          "name": "neon tech"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "mode": "combine",
+        "combineBy": "combineAll",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.merge",
+      "typeVersion": 3.2,
+      "position": [
+        2536,
+        288
+      ],
+      "id": "d262105b-98e4-411c-8d49-6a05f0d4e966",
+      "name": "Merge Report Data"
+    },
+    {
+      "parameters": {
+        "jsCode": "const campaignInfo = $('Webhook - Campaign Input').first().json.body;\nconst metrics = $input.all().filter(item => item.json.platform);\nconst batchId = $('Webhook - Campaign Input').first().json.body.batch_id;\n\nconst totalReach = metrics.reduce((sum, m) => sum + parseInt(m.json.total_reach || 0), 0);\nconst totalEngagement = metrics.reduce((sum, m) => sum + parseInt(m.json.total_engagement || 0), 0);\nconst totalPosts = metrics.reduce((sum, m) => sum + parseInt(m.json.total_posts || 0), 0);\n\nconst platformBreakdown = metrics.map(m => ({\n  platform: m.json.platform,\n  posts: parseInt(m.json.total_posts),\n  reach: parseInt(m.json.total_reach),\n  engagement: parseInt(m.json.total_engagement),\n  avg_reach: parseFloat(m.json.avg_reach).toFixed(0),\n  avg_engagement: parseFloat(m.json.avg_engagement).toFixed(0)\n}));\n\nconst executiveSummary = `Campaign \"${campaignInfo.campaign_name}\" for ${campaignInfo.brand_name} targeting ${campaignInfo.target_audience} has generated ${totalPosts} social media posts across ${metrics.length} platforms with projected reach of ${totalReach.toLocaleString()} and ${totalEngagement.toLocaleString()} engagements.`;\n\nconst reportData = {\n  batch_id: batchId,\n  campaign_name: campaignInfo.campaign_name,\n  brand_name: campaignInfo.brand_name,\n  target_audience: campaignInfo.target_audience,\n  executive_summary: executiveSummary,\n  total_posts: totalPosts,\n  total_reach: totalReach,\n  total_engagement: totalEngagement,\n  total_platforms: metrics.length,\n  platform_breakdown: JSON.stringify(platformBreakdown),\n  generated_at: new Date().toISOString()\n};\n\nreturn { json: reportData };"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        2824,
+        288
+      ],
+      "id": "185c8ed1-4275-44c1-b2b5-ca5bd78cef77",
+      "name": "Generate Report"
+    },
+    {
+      "parameters": {
+        "schema": {
+          "__rl": true,
+          "value": "public",
+          "mode": "list"
+        },
+        "table": {
+          "__rl": true,
+          "value": "campaign_reports",
+          "mode": "list"
+        },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "batch_id": "={{ $json.batch_id }}",
+            "campaign_name": "={{ $json.campaign_name }}",
+            "brand_name": "={{ $json.brand_name }}",
+            "target_audience": "={{ $json.target_audience }}",
+            "executive_summary": "={{ $json.executive_summary }}",
+            "total_posts": "={{ $json.total_posts }}",
+            "total_reach": "={{ $json.total_reach }}",
+            "total_engagement": "={{ $json.total_engagement }}",
+            "total_platforms": "={{ $json.total_platforms }}",
+            "platform_breakdown": "={{ $json.platform_breakdown }}",
+            "generated_at": "={{ $json.generated_at }}"
+          }
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.6,
+      "position": [
+        3048,
+        384
+      ],
+      "id": "7dc203dd-04cd-44ea-8c50-f228130ee5e4",
+      "name": "Save Report to DB",
+      "credentials": {
+        "postgres": {
+          "id": "MveB6PxYqvW6HcTU",
+          "name": "neon tech"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "update",
+        "schema": {
+          "__rl": true,
+          "value": "public",
+          "mode": "list"
+        },
+        "table": {
+          "__rl": true,
+          "value": "analysis_batches",
+          "mode": "list"
+        },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "batch_id": "={{ $('Webhook - Campaign Input').first().json.body.batch_id }}",
+            "status": "completed"
+          },
+          "matchingColumns": [
+            "batch_id"
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.6,
+      "position": [
+        3272,
+        384
+      ],
+      "id": "818d6ad5-a666-411d-af65-ad510b2575a3",
+      "name": "Update to Completed",
+      "credentials": {
+        "postgres": {
+          "id": "MveB6PxYqvW6HcTU",
+          "name": "neon tech"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "options": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.lmChatGoogleGemini",
+      "typeVersion": 1,
+      "position": [
+        2008,
+        -256
+      ],
+      "id": "8c70ae54-2680-4cbf-8a20-9708b390de91",
+      "name": "Gemini Agent 1",
+      "credentials": {
+        "googlePalmApi": {
+          "id": "mQYm94v2g94q3yvS",
+          "name": "Google Gemini(PaLM) Api account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "options": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.lmChatGoogleGemini",
+      "typeVersion": 1,
+      "position": [
+        2360,
+        -256
+      ],
+      "id": "69b7eabd-ebd6-4067-b67a-6dc2efad0a66",
+      "name": "Gemini Agent 2",
+      "credentials": {
+        "googlePalmApi": {
+          "id": "mQYm94v2g94q3yvS",
+          "name": "Google Gemini(PaLM) Api account"
+        }
+      }
+    }
+  ],
+  "connections": {
+    "Webhook - Campaign Input": {
+      "main": [
+        [
+          {
+            "node": "AI Campaign Strategist",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "AI Campaign Strategist": {
+      "main": [
+        [
+          {
+            "node": "Parse AI JSON",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Parse AI JSON": {
+      "main": [
+        [
+          {
+            "node": "Split Platform Strategies",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Split Team Roles",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Extract Summary",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Split Platform Strategies": {
+      "main": [
+        [
+          {
+            "node": "Loop Platforms",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Split Team Roles": {
+      "main": [
+        [
+          {
+            "node": "Loop Roles",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Save Platform Strategies": {
+      "main": [
+        [
+          {
+            "node": "Loop Platforms",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Save Team Roles": {
+      "main": [
+        [
+          {
+            "node": "Loop Roles",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Extract Summary": {
+      "main": [
+        [
+          {
+            "node": "Wait Before Update",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Wait Before Update": {
+      "main": [
+        [
+          {
+            "node": "Update Campaign Status",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Google Gemini Model": {
+      "ai_languageModel": [
+        [
+          {
+            "node": "AI Campaign Strategist",
+            "type": "ai_languageModel",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Loop Platforms": {
+      "main": [
+        [
+          {
+            "node": "Update to Content Ready",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Get Metrics for Report",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Agent 1: Content Creator",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Loop Roles": {
+      "main": [
+        [],
+        [
+          {
+            "node": "Save Team Roles",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Has Campaign?": {
+      "main": [
+        [
+          {
+            "node": "Get Strategies",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Get Campaign Info",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get Strategies": {
+      "main": [
+        [
+          {
+            "node": "Merge Data",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get Campaign Info": {
+      "main": [
+        [
+          {
+            "node": "Merge Data",
+            "type": "main",
+            "index": 1
+          }
+        ]
+      ]
+    },
+    "Merge Data": {
+      "main": [
+        [
+          {
+            "node": "Loop Platforms",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Agent 1: Content Creator": {
+      "main": [
+        [
+          {
+            "node": "Agent 2: Copywriter",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Agent 2: Copywriter": {
+      "main": [
+        [
+          {
+            "node": "Format Posts",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Format Posts": {
+      "main": [
+        [
+          {
+            "node": "Save Posts to DB",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Save Posts to DB": {
+      "main": [
+        [
+          {
+            "node": "Loop Platforms",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Update to Content Ready": {
+      "main": [
+        [
+          {
+            "node": "Merge Report Data",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get Metrics for Report": {
+      "main": [
+        [
+          {
+            "node": "Merge Report Data",
+            "type": "main",
+            "index": 1
+          }
+        ]
+      ]
+    },
+    "Merge Report Data": {
+      "main": [
+        [
+          {
+            "node": "Generate Report",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Generate Report": {
+      "main": [
+        [
+          {
+            "node": "Save Report to DB",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Save Report to DB": {
+      "main": [
+        [
+          {
+            "node": "Update to Completed",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Gemini Agent 1": {
+      "ai_languageModel": [
+        [
+          {
+            "node": "Agent 1: Content Creator",
+            "type": "ai_languageModel",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Gemini Agent 2": {
+      "ai_languageModel": [
+        [
+          {
+            "node": "Agent 2: Copywriter",
+            "type": "ai_languageModel",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Update Campaign Status": {
+      "main": [
+        [
+          {
+            "node": "Has Campaign?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "pinData": {},
+  "meta": {
+    "templateCredsSetupCompleted": true,
+    "instanceId": "merged-workflow-instance"
+  }
+}

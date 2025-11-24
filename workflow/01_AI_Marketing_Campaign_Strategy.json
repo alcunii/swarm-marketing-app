@@ -1,0 +1,289 @@
+{
+  "name": "AI Marketing Campaign Strategy Planner",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "marketing-campaign-strategy",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2.1,
+      "position": [-360, 240],
+      "id": "webhook-campaign-input",
+      "name": "Webhook - Campaign Input",
+      "webhookId": "campaign-strategy-webhook-001"
+    },
+    {
+      "parameters": {
+        "promptType": "define",
+        "text": "=You are a **Social Media Marketing Strategist** with expertise in multi-platform campaign planning.\n\nCAMPAIGN BRIEF:\nCampaign Name: {{ $json.body.campaign_name }}\nCampaign Goal: {{ $json.body.campaign_goal }}\nDuration: {{ $json.body.duration_days }} days\nTarget Audience: {{ $json.body.target_audience }}\nBrand: {{ $json.body.brand_name }}\n\nYOUR TASK:\nAnalyze this campaign and recommend a comprehensive platform strategy.\n\n1. **Platform Selection & Allocation**\n   - Which social media platforms are best for this audience?\n   - How to allocate effort across platforms (percentage)?\n   - Why each platform for this specific audience?\n\n2. **Content Strategy per Platform**\n   - What content types work best? (Reels, Stories, Posts, TikTok Videos, Tweets, LinkedIn Articles)\n   - How many posts per day per platform?\n   - Best posting times for maximum engagement\n\n3. **Overall Campaign Strategy**\n   - Brief strategic summary (2-3 sentences)\n   - Key success factors\n\nOUTPUT FORMAT (JSON only, no markdown, no code blocks):\n{\n  \"strategic_summary\": \"2-3 sentence strategy overview\",\n  \"proposed_breakdowns\": [\n    {\n      \"name\": \"Instagram Campaign\",\n      \"value\": 40,\n      \"unit\": \"%\",\n      \"description\": \"Focus on Reels and Stories. Post 3x daily at 10 AM, 2 PM, 6 PM.\",\n      \"platform\": \"Instagram\",\n      \"content_type\": \"Reels, Stories\",\n      \"posting_frequency\": 3\n    },\n    {\n      \"name\": \"TikTok Campaign\",\n      \"value\": 60,\n      \"unit\": \"%\",\n      \"description\": \"Short-form videos targeting trending sounds. Post 5x daily.\",\n      \"platform\": \"TikTok\",\n      \"content_type\": \"Short Videos\",\n      \"posting_frequency\": 5\n    }\n  ],\n  \"team_recommendation\": [\n    {\n      \"role_name\": \"Content Creator\",\n      \"responsibilities\": \"Create engaging video content for TikTok and Instagram Reels. Stay updated with trending audio and hashtags.\"\n    },\n    {\n      \"role_name\": \"Community Manager\",\n      \"responsibilities\": \"Respond to comments, engage with followers, monitor brand mentions.\"\n    }\n  ]\n}\n\nCRITICAL:\n- Output MUST be valid JSON without any markdown\n- Do NOT wrap in ```json code blocks\n- Start directly with { and end with }\n- Include platform, content_type, and posting_frequency for each breakdown",
+        "options": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.agent",
+      "typeVersion": 2.2,
+      "position": [-120, 240],
+      "id": "ai-campaign-strategist",
+      "name": "AI Campaign Strategist",
+      "continueOnFail": true
+    },
+    {
+      "parameters": {
+        "jsCode": "// Parse and validate AI response\nconst aiResponse = $input.first().json;\n\n// Extract text from various possible response formats\nlet rawOutput = aiResponse.output || \n                aiResponse.text || \n                aiResponse.response || \n                aiResponse.content ||\n                JSON.stringify(aiResponse);\n\n// Clean markdown code blocks\nrawOutput = rawOutput\n  .replace(/```json\\s*/g, '')\n  .replace(/```\\s*/g, '')\n  .trim();\n\n// Parse JSON\nlet parsed;\ntry {\n  parsed = JSON.parse(rawOutput);\n} catch (error) {\n  throw new Error(`Failed to parse AI output as JSON: ${error.message}\\n\\nRaw output:\\n${rawOutput.substring(0, 500)}`);\n}\n\n// Validate required fields\nif (!parsed.strategic_summary || typeof parsed.strategic_summary !== 'string') {\n  throw new Error('Missing or invalid field: strategic_summary (must be string)');\n}\n\nif (!Array.isArray(parsed.proposed_breakdowns) || parsed.proposed_breakdowns.length === 0) {\n  throw new Error('Missing or invalid field: proposed_breakdowns (must be non-empty array)');\n}\n\nif (!Array.isArray(parsed.team_recommendation) || parsed.team_recommendation.length === 0) {\n  throw new Error('Missing or invalid field: team_recommendation (must be non-empty array)');\n}\n\n// Return cleaned and validated output\nreturn {\n  output: {\n    strategic_summary: parsed.strategic_summary,\n    proposed_breakdowns: parsed.proposed_breakdowns,\n    team_recommendation: parsed.team_recommendation\n  },\n  batch_id: $('Webhook - Campaign Input').first().json.body.batch_id,\n  goal_id: $('Webhook - Campaign Input').first().json.body.goal_id\n};"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [80, 240],
+      "id": "parse-ai-json",
+      "name": "Parse AI JSON"
+    },
+    {
+      "parameters": {
+        "fieldToSplitOut": "output.proposed_breakdowns",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.splitOut",
+      "typeVersion": 1,
+      "position": [200, 140],
+      "id": "split-platform-strategies",
+      "name": "Split Platform Strategies"
+    },
+    {
+      "parameters": {
+        "fieldToSplitOut": "output.team_recommendation",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.splitOut",
+      "typeVersion": 1,
+      "position": [200, 340],
+      "id": "split-team-roles",
+      "name": "Split Team Roles"
+    },
+    {
+      "parameters": {
+        "schema": {
+          "__rl": true,
+          "value": "public",
+          "mode": "list"
+        },
+        "table": {
+          "__rl": true,
+          "value": "proposed_breakdowns",
+          "mode": "list"
+        },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "name": "={{ $json.name }}",
+            "value": "={{ $json.value }}",
+            "unit": "={{ $json.unit }}",
+            "description": "={{ $json.description }}",
+            "batch_id": "={{ $('Webhook - Campaign Input').item.json.body.batch_id }}",
+            "platform": "={{ $json.platform }}",
+            "content_type": "={{ $json.content_type }}",
+            "posting_frequency": "={{ $json.posting_frequency }}",
+            "created_at": "={{ $now }}"
+          }
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.6,
+      "position": [600, 140],
+      "id": "save-platform-strategies",
+      "name": "Save Platform Strategies",
+      "credentials": {
+        "postgres": {
+          "id": "oQn2UBa5uL0veqrw",
+          "name": "hris"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "schema": {
+          "__rl": true,
+          "value": "public",
+          "mode": "list"
+        },
+        "table": {
+          "__rl": true,
+          "value": "ai_recommended_roles",
+          "mode": "list"
+        },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "batch_id": "={{ $('Webhook - Campaign Input').item.json.body.batch_id }}",
+            "role_name": "={{ $json.role_name }}",
+            "responsibilities": "={{ $json.responsibilities }}",
+            "created_at": "={{ $now }}"
+          }
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.6,
+      "position": [600, 340],
+      "id": "save-team-roles",
+      "name": "Save Team Roles",
+      "credentials": {
+        "postgres": {
+          "id": "oQn2UBa5uL0veqrw",
+          "name": "hris"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "fieldToSplitOut": "output.strategic_summary",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.splitOut",
+      "typeVersion": 1,
+      "position": [200, 520],
+      "id": "extract-summary",
+      "name": "Extract Summary"
+    },
+    {
+      "parameters": {
+        "amount": 5
+      },
+      "type": "n8n-nodes-base.wait",
+      "typeVersion": 1.1,
+      "position": [400, 520],
+      "id": "wait-before-update",
+      "name": "Wait Before Update"
+    },
+    {
+      "parameters": {
+        "operation": "update",
+        "schema": {
+          "__rl": true,
+          "value": "public",
+          "mode": "list"
+        },
+        "table": {
+          "__rl": true,
+          "value": "analysis_batches",
+          "mode": "list"
+        },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "batch_id": "={{ $('Webhook - Campaign Input').item.json.body.batch_id }}",
+            "status": "strategy_pending",
+            "summary": "={{ $json['output.strategic_summary'] }}",
+            "created_at": "={{ $now }}"
+          },
+          "matchingColumns": ["batch_id"]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.6,
+      "position": [600, 520],
+      "id": "update-campaign-status",
+      "name": "Update Campaign Status",
+      "credentials": {
+        "postgres": {
+          "id": "oQn2UBa5uL0veqrw",
+          "name": "hris"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "modelName": "models/gemini-2.0-flash-exp",
+        "options": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.lmChatGoogleGemini",
+      "typeVersion": 1,
+      "position": [-120, 440],
+      "id": "gemini-model",
+      "name": "Google Gemini Model",
+      "credentials": {
+        "googlePalmApi": {
+          "id": "A19JNaOmiTyjmmNB",
+          "name": "GEMINI MULMEDRW"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "options": {}
+      },
+      "type": "n8n-nodes-base.splitInBatches",
+      "typeVersion": 3,
+      "position": [400, 140],
+      "id": "loop-platforms",
+      "name": "Loop Platforms"
+    },
+    {
+      "parameters": {
+        "options": {}
+      },
+      "type": "n8n-nodes-base.splitInBatches",
+      "typeVersion": 3,
+      "position": [400, 340],
+      "id": "loop-roles",
+      "name": "Loop Roles"
+    }
+  ],
+  "connections": {
+    "Webhook - Campaign Input": {
+      "main": [[{"node": "AI Campaign Strategist", "type": "main", "index": 0}]]
+    },
+    "AI Campaign Strategist": {
+      "main": [[{"node": "Parse AI JSON", "type": "main", "index": 0}]]
+    },
+    "Parse AI JSON": {
+      "main": [[
+        {"node": "Split Platform Strategies", "type": "main", "index": 0},
+        {"node": "Split Team Roles", "type": "main", "index": 0},
+        {"node": "Extract Summary", "type": "main", "index": 0}
+      ]]
+    },
+    "Gemini Model": {
+      "ai_languageModel": [[{"node": "AI Campaign Strategist", "type": "ai_languageModel", "index": 0}]]
+    },
+    "Split Platform Strategies": {
+      "main": [[{"node": "Loop Platforms", "type": "main", "index": 0}]]
+    },
+    "Split Team Roles": {
+      "main": [[{"node": "Loop Roles", "type": "main", "index": 0}]]
+    },
+    "Loop Platforms": {
+      "main": [
+        [],
+        [{"node": "Save Platform Strategies", "type": "main", "index": 0}]
+      ]
+    },
+    "Loop Roles": {
+      "main": [
+        [],
+        [{"node": "Save Team Roles", "type": "main", "index": 0}]
+      ]
+    },
+    "Save Platform Strategies": {
+      "main": [[{"node": "Loop Platforms", "type": "main", "index": 0}]]
+    },
+    "Save Team Roles": {
+      "main": [[{"node": "Loop Roles", "type": "main", "index": 0}]]
+    },
+    "Extract Summary": {
+      "main": [[{"node": "Wait Before Update", "type": "main", "index": 0}]]
+    },
+    "Wait Before Update": {
+      "main": [[{"node": "Update Campaign Status", "type": "main", "index": 0}]]
+    },
+    "Update Campaign Status": {
+      "main": []
+    }
+  },
+  "active": true,
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "tags": [{"name": "marketing"}]
+}

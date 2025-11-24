@@ -1,0 +1,469 @@
+{
+  "name": "02 - AI Content Generator (AUTO)",
+  "nodes": [
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "seconds",
+              "secondsInterval": 10
+            }
+          ]
+        }
+      },
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [240, 300],
+      "id": "schedule-trigger",
+      "name": "Every 10 Seconds"
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "SELECT batch_id FROM analysis_batches WHERE status = 'strategy_pending' ORDER BY created_at ASC LIMIT 1;",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.6,
+      "position": [460, 300],
+      "id": "find-pending",
+      "name": "Find Pending Campaign",
+      "credentials": {
+        "postgres": {
+          "id": "ZWkJzn30zvcID8Bs",
+          "name": "Postgres account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "leftValue": "",
+            "caseSensitive": true,
+            "typeValidation": "strict"
+          },
+          "conditions": [
+            {
+              "id": "has-batch",
+              "leftValue": "={{ $json.batch_id }}",
+              "rightValue": "",
+              "operator": {
+                "type": "string",
+                "operation": "exists"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [680, 300],
+      "id": "has-campaign",
+      "name": "Has Campaign?"
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "=SELECT * FROM proposed_breakdowns WHERE batch_id = '{{ $json.batch_id }}' ORDER BY value DESC;",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.6,
+      "position": [920, 200],
+      "id": "get-strategies",
+      "name": "Get Strategies",
+      "credentials": {
+        "postgres": {
+          "id": "ZWkJzn30zvcID8Bs",
+          "name": "Postgres account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "=SELECT campaign_name, brand_name, target_audience FROM analysis_batches WHERE batch_id = '{{ $json.batch_id }}' LIMIT 1;",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.6,
+      "position": [920, 360],
+      "id": "get-campaign",
+      "name": "Get Campaign Info",
+      "credentials": {
+        "postgres": {
+          "id": "ZWkJzn30zvcID8Bs",
+          "name": "Postgres account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "mode": "combine",
+        "combineBy": "combineAll",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.merge",
+      "typeVersion": 3.2,
+      "position": [1140, 280],
+      "id": "merge-data",
+      "name": "Merge Data"
+    },
+    {
+      "parameters": {
+        "options": {}
+      },
+      "type": "n8n-nodes-base.splitInBatches",
+      "typeVersion": 3,
+      "position": [1340, 280],
+      "id": "loop-platforms",
+      "name": "Loop Platforms"
+    },
+    {
+      "parameters": {
+        "promptType": "define",
+        "text": "=You are **Agent 1: Content Creator** for {{ $('Get Campaign Info').first().json.brand_name }}.\n\nCAMPAIGN: {{ $('Get Campaign Info').first().json.campaign_name }}\nTARGET: {{ $('Get Campaign Info').first().json.target_audience }}\nPLATFORM: {{ $json.platform }}\nCONTENT TYPE: {{ $json.content_type }}\nPOSTING FREQUENCY: {{ $json.value }} posts\n\nYOUR TASK:\nCreate {{ $json.value }} unique, engaging social media posts for this platform.\n\nFor each post:\n1. Write a compelling caption (2-4 sentences)\n2. Add relevant hashtags (5-8)\n3. Include a clear call-to-action\n4. Suggest appropriate emojis (2-4)\n5. Describe the content idea\n\nOUTPUT (JSON only, no markdown):\n{\n  \"posts\": [\n    {\n      \"caption\": \"Your caption here\",\n      \"hashtags\": \"#Tag1 #Tag2 #Tag3\",\n      \"call_to_action\": \"Your CTA\",\n      \"emojis\": \"🎉✨\",\n      \"content_description\": \"Image/video description\"\n    }\n  ]\n}\n\nIMPORTANT:\n- Return ONLY valid JSON\n- NO markdown, NO code blocks\n- Start with { and end with }",
+        "options": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.agent",
+      "typeVersion": 2.2,
+      "position": [1560, 180],
+      "id": "agent-creator",
+      "name": "Agent 1: Content Creator"
+    },
+    {
+      "parameters": {
+        "promptType": "define",
+        "text": "=You are **Agent 2: Copywriter** specializing in tone refinement.\n\nREFINE these posts for {{ $json.platform }}:\n{{ $('Agent 1: Content Creator').item.json.output }}\n\nAUDIENCE: {{ $('Get Campaign Info').first().json.target_audience }}\n\nYOUR TASK:\n1. Keep the structure but improve:\n   - Make tone warm, friendly, and approachable\n   - Add personality and human touch\n   - Ensure language fits the target demographic\n   - Vary sentence structure for natural flow\n2. Return in the SAME JSON format\n\nOUTPUT (JSON only):\n{\n  \"posts\": [ ... refined posts ... ]\n}\n\nNO markdown, NO code blocks.",
+        "options": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.agent",
+      "typeVersion": 2.2,
+      "position": [1780, 180],
+      "id": "agent-copywriter",
+      "name": "Agent 2: Copywriter"
+    },
+    {
+      "parameters": {
+        "jsCode": "// Clean output from AI (remove markdown code blocks if present)\nlet outputText = $json.output || '{}';\n\n// Remove markdown code blocks\noutputText = outputText.replace(/```json\\s*/g, '').replace(/```\\s*/g, '');\n\n// Parse JSON\nconst parsed = JSON.parse(outputText);\nconst posts = parsed.posts || [];\n\nconst batchId = $('Find Pending Campaign').first().json.batch_id;\nconst platform = $('Loop Platforms').item.json.platform;\nconst baseTime = new Date();\nconst hoursDistribution = [9, 11, 14, 16, 19];\n\nreturn posts.map((post, idx) => {\n  const dayOffset = Math.floor(idx / hoursDistribution.length);\n  const hourIdx = idx % hoursDistribution.length;\n  const scheduledTime = new Date(baseTime);\n  scheduledTime.setDate(scheduledTime.getDate() + dayOffset);\n  scheduledTime.setHours(hoursDistribution[hourIdx], Math.floor(Math.random() * 60), 0);\n  \n  return {\n    json: {\n      ...post,\n      batch_id: batchId,\n      platform: platform,\n      scheduled_time: scheduledTime.toISOString(),\n      status: 'pending_approval',\n      reach_simulated: Math.floor(Math.random() * 5000) + 10000,\n      engagement_simulated: Math.floor(Math.random() * 500) + 800\n    }\n  };\n});"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [2000, 180],
+      "id": "agent-scheduler",
+      "name": "Agent 3: Scheduler"
+    },
+    {
+      "parameters": {
+        "schema": {
+          "__rl": true,
+          "value": "public",
+          "mode": "list"
+        },
+        "table": {
+          "__rl": true,
+          "value": "proposed_kpis",
+          "mode": "list"
+        },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "batch_id": "={{ $json.batch_id }}",
+            "platform": "={{ $json.platform }}",
+            "post_caption": "={{ $json.caption }}",
+            "hashtags": "={{ $json.hashtags }}",
+            "call_to_action": "={{ $json.call_to_action }}",
+            "emojis": "={{ $json.emojis }}",
+            "content_description": "={{ $json.content_description }}",
+            "scheduled_time": "={{ $json.scheduled_time }}",
+            "status": "={{ $json.status }}",
+            "reach_simulated": "={{ $json.reach_simulated }}",
+            "engagement_simulated": "={{ $json.engagement_simulated }}",
+            "is_approved": false,
+            "created_at": "={{ $now }}"
+          }
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.6,
+      "position": [2220, 280],
+      "id": "save-posts",
+      "name": "Save Posts to DB",
+      "credentials": {
+        "postgres": {
+          "id": "ZWkJzn30zvcID8Bs",
+          "name": "Postgres account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "update",
+        "schema": {
+          "__rl": true,
+          "value": "public",
+          "mode": "list"
+        },
+        "table": {
+          "__rl": true,
+          "value": "analysis_batches",
+          "mode": "list"
+        },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "batch_id": "={{ $('Find Pending Campaign').first().json.batch_id }}",
+            "status": "content_ready"
+          },
+          "matchingColumns": [
+            "batch_id"
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.6,
+      "position": [1560, 280],
+      "id": "update-status",
+      "name": "Update to Content Ready",
+      "credentials": {
+        "postgres": {
+          "id": "ZWkJzn30zvcID8Bs",
+          "name": "Postgres account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "=SELECT \n  pk.platform,\n  COUNT(*) as total_posts,\n  SUM(pk.reach_simulated) as total_reach,\n  SUM(pk.engagement_simulated) as total_engagement,\n  AVG(pk.reach_simulated) as avg_reach,\n  AVG(pk.engagement_simulated) as avg_engagement\nFROM proposed_kpis pk\nWHERE pk.batch_id = '{{ $('Find Pending Campaign').first().json.batch_id }}'\nGROUP BY pk.platform;",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.6,
+      "position": [1780, 380],
+      "id": "get-metrics",
+      "name": "Get Metrics for Report",
+      "credentials": {
+        "postgres": {
+          "id": "ZWkJzn30zvcID8Bs",
+          "name": "Postgres account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "mode": "combine",
+        "combineBy": "combineAll",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.merge",
+      "typeVersion": 3.2,
+      "position": [2000, 320],
+      "id": "merge-report-data",
+      "name": "Merge Report Data"
+    },
+    {
+      "parameters": {
+        "jsCode": "const campaignInfo = $('Get Campaign Info').first().json;\nconst metrics = $input.all().filter(item => item.json.platform);\nconst batchId = $('Find Pending Campaign').first().json.batch_id;\n\nconst totalReach = metrics.reduce((sum, m) => sum + parseInt(m.json.total_reach || 0), 0);\nconst totalEngagement = metrics.reduce((sum, m) => sum + parseInt(m.json.total_engagement || 0), 0);\nconst totalPosts = metrics.reduce((sum, m) => sum + parseInt(m.json.total_posts || 0), 0);\n\nconst platformBreakdown = metrics.map(m => ({\n  platform: m.json.platform,\n  posts: parseInt(m.json.total_posts),\n  reach: parseInt(m.json.total_reach),\n  engagement: parseInt(m.json.total_engagement),\n  avg_reach: parseFloat(m.json.avg_reach).toFixed(0),\n  avg_engagement: parseFloat(m.json.avg_engagement).toFixed(0)\n}));\n\nconst executiveSummary = `Campaign \"${campaignInfo.campaign_name}\" for ${campaignInfo.brand_name} targeting ${campaignInfo.target_audience} has generated ${totalPosts} social media posts across ${metrics.length} platforms with projected reach of ${totalReach.toLocaleString()} and ${totalEngagement.toLocaleString()} engagements.`;\n\nconst reportData = {\n  batch_id: batchId,\n  campaign_name: campaignInfo.campaign_name,\n  brand_name: campaignInfo.brand_name,\n  target_audience: campaignInfo.target_audience,\n  executive_summary: executiveSummary,\n  total_posts: totalPosts,\n  total_reach: totalReach,\n  total_engagement: totalEngagement,\n  total_platforms: metrics.length,\n  platform_breakdown: JSON.stringify(platformBreakdown),\n  generated_at: new Date().toISOString()\n};\n\nreturn { json: reportData };"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [2220, 320],
+      "id": "generate-report",
+      "name": "Generate Report"
+    },
+    {
+      "parameters": {
+        "schema": {
+          "__rl": true,
+          "value": "public",
+          "mode": "list"
+        },
+        "table": {
+          "__rl": true,
+          "value": "campaign_reports",
+          "mode": "list"
+        },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "batch_id": "={{ $json.batch_id }}",
+            "campaign_name": "={{ $json.campaign_name }}",
+            "brand_name": "={{ $json.brand_name }}",
+            "target_audience": "={{ $json.target_audience }}",
+            "executive_summary": "={{ $json.executive_summary }}",
+            "total_posts": "={{ $json.total_posts }}",
+            "total_reach": "={{ $json.total_reach }}",
+            "total_engagement": "={{ $json.total_engagement }}",
+            "total_platforms": "={{ $json.total_platforms }}",
+            "platform_breakdown": "={{ $json.platform_breakdown }}",
+            "generated_at": "={{ $json.generated_at }}"
+          }
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.6,
+      "position": [2440, 320],
+      "id": "save-report",
+      "name": "Save Report to DB",
+      "credentials": {
+        "postgres": {
+          "id": "ZWkJzn30zvcID8Bs",
+          "name": "Postgres account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "update",
+        "schema": {
+          "__rl": true,
+          "value": "public",
+          "mode": "list"
+        },
+        "table": {
+          "__rl": true,
+          "value": "analysis_batches",
+          "mode": "list"
+        },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "batch_id": "={{ $('Find Pending Campaign').first().json.batch_id }}",
+            "status": "completed"
+          },
+          "matchingColumns": [
+            "batch_id"
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.6,
+      "position": [2660, 320],
+      "id": "update-to-completed",
+      "name": "Update to Completed",
+      "credentials": {
+        "postgres": {
+          "id": "ZWkJzn30zvcID8Bs",
+          "name": "Postgres account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "options": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.lmChatGoogleGemini",
+      "typeVersion": 1,
+      "position": [1560, 60],
+      "id": "gemini-1",
+      "name": "Gemini Agent 1",
+      "credentials": {
+        "googlePalmApi": {
+          "id": "A19JNaOmiTyjmmNB",
+          "name": "GEMINI MULMEDRW"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "options": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.lmChatGoogleGemini",
+      "typeVersion": 1,
+      "position": [1780, 60],
+      "id": "gemini-2",
+      "name": "Gemini Agent 2",
+      "credentials": {
+        "googlePalmApi": {
+          "id": "A19JNaOmiTyjmmNB",
+          "name": "GEMINI MULMEDRW"
+        }
+      }
+    }
+  ],
+  "connections": {
+    "Every 5 Minutes": {
+      "main": [[{"node": "Find Pending Campaign", "type": "main", "index": 0}]]
+    },
+    "Find Pending Campaign": {
+      "main": [[{"node": "Has Campaign?", "type": "main", "index": 0}]]
+    },
+    "Has Campaign?": {
+      "main": [
+        [
+          {"node": "Get Strategies", "type": "main", "index": 0},
+          {"node": "Get Campaign Info", "type": "main", "index": 0}
+        ]
+      ]
+    },
+    "Get Strategies": {
+      "main": [[{"node": "Merge Data", "type": "main", "index": 0}]]
+    },
+    "Get Campaign Info": {
+      "main": [[{"node": "Merge Data", "type": "main", "index": 1}]]
+    },
+    "Merge Data": {
+      "main": [[{"node": "Loop Platforms", "type": "main", "index": 0}]]
+    },
+    "Loop Platforms": {
+      "main": [
+        [
+          {"node": "Update to Content Ready", "type": "main", "index": 0},
+          {"node": "Get Metrics for Report", "type": "main", "index": 0}
+        ],
+        [{"node": "Agent 1: Content Creator", "type": "main", "index": 0}]
+      ]
+    },
+    "Agent 1: Content Creator": {
+      "main": [[{"node": "Agent 2: Copywriter", "type": "main", "index": 0}]]
+    },
+    "Agent 2: Copywriter": {
+      "main": [[{"node": "Agent 3: Scheduler", "type": "main", "index": 0}]]
+    },
+    "Agent 3: Scheduler": {
+      "main": [[{"node": "Save Posts to DB", "type": "main", "index": 0}]]
+    },
+    "Save Posts to DB": {
+      "main": [[{"node": "Loop Platforms", "type": "main", "index": 0}]]
+    },
+    "Update to Content Ready": {
+      "main": [[{"node": "Merge Report Data", "type": "main", "index": 0}]]
+    },
+    "Get Metrics for Report": {
+      "main": [[{"node": "Merge Report Data", "type": "main", "index": 1}]]
+    },
+    "Merge Report Data": {
+      "main": [[{"node": "Generate Report", "type": "main", "index": 0}]]
+    },
+    "Generate Report": {
+      "main": [[{"node": "Save Report to DB", "type": "main", "index": 0}]]
+    },
+    "Save Report to DB": {
+      "main": [[{"node": "Update to Completed", "type": "main", "index": 0}]]
+    },
+    "Gemini Agent 1": {
+      "ai_languageModel": [[{"node": "Agent 1: Content Creator", "type": "ai_languageModel", "index": 0}]]
+    },
+    "Gemini Agent 2": {
+      "ai_languageModel": [[{"node": "Agent 2: Copywriter", "type": "ai_languageModel", "index": 0}]]
+    }
+  },
+  "pinData": {},
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "staticData": null,
+  "tags": [],
+  "triggerCount": 0,
+  "updatedAt": "2025-11-09T03:30:00.000Z",
+  "versionId": "1"
+}
